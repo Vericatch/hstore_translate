@@ -2,6 +2,22 @@ module HstoreTranslate
   module Translates
     SUFFIX = "_translations"
 
+    module PrependHookMethods
+ 
+      def respond_to?(symbol, include_all = false)
+        respond_to_check(symbol, include_all) do
+          super
+        end
+      end
+
+      def method_missing(method_name, *args)
+        method_missing_check(method_name, *args) do
+          super
+        end
+      end
+
+    end
+
     def translates(*attrs)
       include InstanceMethods
 
@@ -26,8 +42,7 @@ module HstoreTranslate
         end
       end
 
-      alias_method_chain :respond_to?, :translates
-      alias_method_chain :method_missing, :translates
+      prepend PrependHookMethods
     end
 
     # Improve compatibility with the gem globalize
@@ -37,11 +52,11 @@ module HstoreTranslate
 
     module InstanceMethods
       def disable_fallback(&block)
-        toggle_fallback(enabled = false, &block)
+        toggle_fallback(false, &block)
       end
 
       def enable_fallback(&block)
-        toggle_fallback(enabled = true, &block)
+        toggle_fallback(true, &block)
       end
 
       protected
@@ -77,20 +92,33 @@ module HstoreTranslate
         value
       end
 
-      def respond_to_with_translates?(symbol, include_all = false)
+      def respond_to_check(symbol, include_all = false)
         return true if parse_translated_attribute_accessor(symbol)
-        respond_to_without_translates?(symbol, include_all)
+
+        yield
       end
 
-      def method_missing_with_translates(method_name, *args)
+      def method_missing_check(method_name, *args)
         translated_attr_name, locale, assigning = parse_translated_attribute_accessor(method_name)
 
-        return method_missing_without_translates(method_name, *args) unless translated_attr_name
+        return yield unless translated_attr_name
 
         if assigning
           write_hstore_translation(translated_attr_name, args.first, locale)
         else
           read_hstore_translation(translated_attr_name, locale)
+        end
+      end
+      
+      def respond_to_with_translates?(symbol, include_all = false)
+        respond_to_check(symbol, include_all) do
+          respond_to_without_translates?(symbol, include_all)
+        end
+      end
+  
+      def method_missing_with_translates(method_name, *args)
+        method_missing_check(method_name, *args) do
+          method_missing_without_translates(method_name, *args)
         end
       end
 
